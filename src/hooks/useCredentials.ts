@@ -54,7 +54,10 @@ export function useCredentials() {
       }
 
       const result = await supabase.functions.invoke('sync-google-sheets', {
-        body: { credential, action: 'add' },
+        body: { credential, action: credential.action || 'add' },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
       });
 
       if (result.data?.success) {
@@ -126,12 +129,29 @@ export function useCredentials() {
       return;
     }
 
+    const updatedCredential = credentials.find(c => c.id === id);
+    if (updatedCredential) {
+      const fullUpdatedCredential = { ...updatedCredential, ...updates };
+      
+      // Sync to Google Sheets
+      await syncToGoogleSheets({
+        id: fullUpdatedCredential.id,
+        website_name: fullUpdatedCredential.websiteName,
+        website_url: fullUpdatedCredential.websiteUrl,
+        username: fullUpdatedCredential.username,
+        password: fullUpdatedCredential.password,
+        created_at: fullUpdatedCredential.createdAt,
+        updated_at: new Date().toISOString(),
+        action: 'update'
+      });
+    }
+
     setCredentials(prev => prev.map(cred =>
       cred.id === id
         ? { ...cred, ...updates, updatedAt: new Date().toISOString() }
         : cred
     ));
-  }, []);
+  }, [credentials]);
 
   const deleteCredential = useCallback(async (id: string) => {
     const { error } = await supabase
@@ -143,6 +163,12 @@ export function useCredentials() {
       console.error('Error deleting credential:', error);
       return;
     }
+
+    // Sync to Google Sheets
+    await syncToGoogleSheets({
+      id: id,
+      action: 'delete'
+    });
 
     setCredentials(prev => prev.filter(cred => cred.id !== id));
   }, []);
